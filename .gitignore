@@ -1,16 +1,7 @@
 cache
 node_modules
 build
-# ZK obuild artefacts
-*.ptau
-*.zkey
-*.r1cs
-*.wasm
-*.sym
-*.wtns
-verification_key.json
-proof.json
-zk/circom
+.DS_Store
 
 # Local Netlify folder
 .netlify
