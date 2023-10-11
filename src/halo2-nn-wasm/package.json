@@ -1,0 +1,14 @@
+{
+  "name": "halo2-nn-wasm",
+  "version": "0.1.0",
+  "files": [
+    "halo2_nn_wasm_bg.wasm",
+    "halo2_nn_wasm.js",
+    "halo2_nn_wasm.d.ts"
+  ],
+  "module": "halo2_nn_wasm.js",
+  "types": "halo2_nn_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

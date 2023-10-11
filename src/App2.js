@@ -9,19 +9,19 @@ export default function App() {
     <BrowserRouter>
       <div>
         <h1>0xZKML: MNIST</h1>
-          <nav style={{ borderBottom: 'solid 1px', paddingBottom: '1rem' }}>
-            <Link to="/">Home</Link> |{' '}
-            <Link to="mnist">Draw Digit</Link> |{' '}
-            <Link to="selector">Select Digit</Link> |{' '}
-            <Link to="model">Model Desc</Link> |{' '}
-          </nav>
+        <nav style={{ borderBottom: 'solid 1px', paddingBottom: '1rem' }}>
+          <Link to="/">Home</Link> |{' '}
+          <Link to="mnist">Draw Digit</Link> |{' '}
+          <Link to="selector">Select Digit</Link> |{' '}
+          {/* <Link to="model">Model Desc</Link> |{' '} */}
+        </nav>
         <Outlet />
       </div>
       <Routes>
-        <Route path="/" element={<Home />}/>
-        <Route path="/mnist" element={<MNISTDraw />}/>
-        <Route path="/selector" element={<MNISTSelect />}/>
-        <Route path="/model" element={<ModelDesc />}/>
+        <Route path="/" element={<Home />} />
+        <Route path="/mnist" element={<MNISTDraw />} />
+        <Route path="/selector" element={<MNISTSelect />} />
+        {/* <Route path="/model" element={<ModelDesc />} /> */}
       </Routes>
     </BrowserRouter>
   );
@@ -40,7 +40,7 @@ function Selector() {
 // TODO: place this in its own JS file
 function ModelDesc() {
   return (
-      <div>
+    <div>
       <h2>Model Description</h2>
       <h3>Architecture</h3>
       [image of architecture]
@@ -48,6 +48,6 @@ function ModelDesc() {
       [hash]
       <h3>Overview</h3>
       Describe which parts are done on the front end, which parts happen in circom
-      </div>
+    </div>
   )
 }

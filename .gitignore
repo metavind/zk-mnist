@@ -1,6 +1,6 @@
 cache
 node_modules
-artifacts
+build
 # ZK obuild artefacts
 *.ptau
 *.zkey
