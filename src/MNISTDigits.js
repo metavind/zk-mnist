@@ -3,7 +3,7 @@ import { DIGIT } from './mnistpics';
 import './MNIST.css';
 import './App.css';
 import { CopyBlock, dracula } from "react-code-blocks";
-import { batchSize, MNISTSIZE } from "./config"
+import { MNISTSIZE } from "./config"
 
 export const digSize = 4;
 const randomDigits = randints(0, DIGIT['weight'].length, 16);
@@ -26,10 +26,10 @@ function randints(lo, hi, cnt) {
 export function MNISTSelect(props) {
   const size = digSize; // array of images to choose from
   const [imgUrl, setImgUrl] = useState([]);
-  const [selected, setSelected] = useState([]);
-  const [prediction, setPrediction] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [prediction, setPrediction] = useState(null);
   const [publicSignal, setPublicSignal] = useState([]);
-  const [proof, setProof] = useState("");
+  const [proof, setProof] = useState(null);
   const [proofDone, setProofDone] = useState(false)
   const [isVerified, setIsVerified] = useState(false);
   const [verifyDone, setVerifyDone] = useState(false)
@@ -82,7 +82,7 @@ export function MNISTSelect(props) {
 
   function getSelectedImages(selected) {
     var nselected = selected.length;
-    var imgTensor = Array(batchSize * MNISTSIZE).fill(0);
+    var imgTensor = Array(MNISTSIZE).fill(0);
 
     for (let i = 0; i < nselected; i++) {
       var idx = randomDigits[selected[i]];
