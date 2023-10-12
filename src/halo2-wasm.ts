@@ -12,4 +12,15 @@ export const getNnWasm = (halo2wasm: Halo2Wasm) => {
   return nnwasm;
 }
 
+export const CIRCUIT_CONFIG = {
+  k: 14,
+  numAdvice: 10,
+  numLookupAdvice: 1,
+  numInstance: 1,
+  numLookupBits: 13,
+  numVirtualInstance: 1
+};
+
+export const MODULUS = BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+
 export { Halo2Wasm, NnWasm };

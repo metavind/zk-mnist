@@ -8,7 +8,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <div>
-        <h1>0xZKML: MNIST</h1>
+        <h1>Halo2Wasm: MNIST</h1>
         <nav style={{ borderBottom: 'solid 1px', paddingBottom: '1rem' }}>
           <Link to="/">Home</Link> |{' '}
           <Link to="mnist">Draw Digit</Link> |{' '}

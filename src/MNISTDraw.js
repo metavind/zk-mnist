@@ -3,9 +3,7 @@ import { size, MNISTSIZE } from './config';
 import './MNIST.css';
 import './App.css';
 
-import { CopyBlock, dracula } from "react-code-blocks";
-
-import { getHalo2Wasm, getNnWasm } from "./halo2-wasm";
+import { MODULUS, CIRCUIT_CONFIG, getHalo2Wasm, getNnWasm } from "./halo2-wasm";
 import { CircuitScaffold } from "@axiom-crypto/halo2-js";
 
 
@@ -73,25 +71,12 @@ function MNISTBoard(props) {
   )
 }
 
-const CIRCUIT_CONFIG = {
-    k: 14,
-    numAdvice: 10,
-    numLookupAdvice: 1,
-    numInstance: 1,
-    numLookupBits: 13,
-    numVirtualInstance: 1
-};
-
-const MODULUS = BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
-
 export function MNISTDraw() {
-  const [quantizedEmbedding, setQuantizedEmbedding] = useState([])
   const [prediction, setPrediction] = useState(null);
   const [proof, setProof] = useState(null);
-  const [circuit, setCircuit] = useState(null);
   const [halo2wasm, setHalo2wasm] = useState(null);
+  const [circuit, setCircuit] = useState(null);
   const [proofDone, setProofDone] = useState(false)
-  const [publicSignal, setPublicSignal] = useState()
   const [isVerified, setIsVerified] = useState(false);
   const [verifyDone, setVerifyDone] = useState(false)
   const [grid, setGrid] = useState(Array(size).fill(null).map(_ => Array(size).fill(0))); // initialize to a 28x28 array of 0's
@@ -99,54 +84,62 @@ export function MNISTDraw() {
   useEffect(() => {
     async function setup() {
       const halo2wasm = await getHalo2Wasm();
-      const circuit = new CircuitScaffold(halo2wasm);
-      circuit.newCircuitFromConfig(CIRCUIT_CONFIG);
-      
-      setCircuit(circuit);
       setHalo2wasm(halo2wasm);
     }
     setup();
   }, []);
 
-  async function doProof() {
-    var start = performance.now();
+  useEffect(() => {
+    if (halo2wasm === null) return;
+
+    const circuit = new CircuitScaffold(halo2wasm);
+    circuit.newCircuitFromConfig(CIRCUIT_CONFIG);
+
+    setCircuit(circuit);
+
     // get image from grid
     var input = new Uint32Array(MNISTSIZE);
     for (let i = 0; i < size; i++) {
       for (let j = 0; j < size; j++) {
-        input[i * size + j] = grid[i][j] * 255 * 10**6;
+        input[i * size + j] = grid[i][j] * 10 ** 6;
       }
     }
-    console.log(input); 
+    console.log(input);
 
     const nnwasm = getNnWasm(halo2wasm);
     const outputs = nnwasm.forward(halo2wasm, input).split('\n').map(x => {
-      let bigX =  BigInt(x);
+      let bigX = BigInt(x);
       if (bigX > (MODULUS - 1n) / 2n) {
         bigX = -(MODULUS - bigX);
       }
       return bigX;
     });
-    
+
     console.log(outputs);
-    
-    const argmaxOutputs = outputs.indexOf(outputs.reduce((a, b) => a > b ? a : b));
-    
-    console.log(argmaxOutputs);
 
-    // var kstart = performance.now();
-    // await circuit.keygen();
-    // var kend = performance.now();
-    // console.log(`Keygen time: ${ kend - kstart} ms`);
+    const argmaxOutput = outputs.indexOf(outputs.reduce((a, b) => a > b ? a : b));
 
-    // var pstart = performance.now();
-    // const proof = circuit.prove();
-    // var pend = performance.now();
-    // console.log(`Prove time: ${ pend - pstart} ms`);
+    console.log(argmaxOutput);
+    setPrediction(argmaxOutput);
+  }, [grid]);
 
-    // setPrediction(argmaxOutputs);
-    // setProof(proof);
-    // setProofDone(true);
+  async function doProof() {
+    if (circuit === null) return;
+
+    console.log("Keygen start");
+    var kstart = performance.now();
+    await circuit.keygen();
+    var kend = performance.now();
+    console.log(`Keygen time: ${kend - kstart} ms`);
+
+    console.log("Proving start");
+    var pstart = performance.now();
+    const proof = circuit.prove();
+    var pend = performance.now();
+    console.log(`Prove time: ${pend - pstart} ms`);
+
+    setProof(proof);
+    setProofDone(true);
 
     // var nselected = 1;
     // const tensor = new Tensor('float32', Float32Array.from(imgTensor), [batchSize, 1, 28, 28]);
@@ -163,16 +156,17 @@ export function MNISTDraw() {
   }
 
   async function doVerify() {
+    console.log("Verification start");
     var vstart = performance.now();
     try {
       circuit.verify(proof);
+      var vend = performance.now();
+      console.log(`Verify time: ${vend - vstart} ms`);
       setIsVerified(true);
     } catch (e) {
       console.error(e);
       setIsVerified(false);
     }
-    var vend = performance.now();
-    console.log(`Verify time: ${ vend - vstart} ms`);
     setVerifyDone(true);
     // const result = await verifyProof(proof, publicSignal)
     // if (result != null) {
@@ -199,7 +193,7 @@ export function MNISTDraw() {
   function ProofButton() {
     return (
       <button className="button" onClick={doProof}>
-        Classify & Prove
+        Prove
       </button>
     );
   }
@@ -224,8 +218,6 @@ export function MNISTDraw() {
     return (
       <>
         <div className="proof">
-          <h2>Prediction</h2>
-          {prediction}
           <h2>Proof of computation</h2>
         </div>
 
@@ -258,6 +250,7 @@ export function MNISTDraw() {
           <ResetButton />
         </div>
       </div>
+      {prediction !== null && <h2>Prediction: {prediction}</h2>}
       {proofDone && ProofBlock()}
       {verifyDone && VerifyBlock()}
     </div>

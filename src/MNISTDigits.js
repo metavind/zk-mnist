@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { DIGIT } from './mnistpics';
+import DIGITS from "./mnist_fc_unscaled_samples.json";
 import './MNIST.css';
 import './App.css';
-import { CopyBlock, dracula } from "react-code-blocks";
 import { MNISTSIZE } from "./config"
 
+import { MODULUS, CIRCUIT_CONFIG, getHalo2Wasm, getNnWasm } from "./halo2-wasm";
+import { CircuitScaffold } from "@axiom-crypto/halo2-js";
+
 export const digSize = 4;
-const randomDigits = randints(0, DIGIT['weight'].length, 16);
+const randomDigits = randints(0, Object.keys(DIGITS).length / 2, 16);
 
 function getRandomInt(min, max) {
   min = Math.ceil(min);
@@ -28,19 +30,26 @@ export function MNISTSelect(props) {
   const [imgUrl, setImgUrl] = useState([]);
   const [selected, setSelected] = useState(null);
   const [prediction, setPrediction] = useState(null);
-  const [publicSignal, setPublicSignal] = useState([]);
+  const [halo2wasm, setHalo2wasm] = useState(null);
+  const [circuit, setCircuit] = useState(null);
   const [proof, setProof] = useState(null);
   const [proofDone, setProofDone] = useState(false)
   const [isVerified, setIsVerified] = useState(false);
   const [verifyDone, setVerifyDone] = useState(false)
 
   const [grid, setGrid] = useState(Array(size).fill(null).map(_ => Array(size).fill(0)));
-  const [gridChecked, setGridChecked] = useState(Array(size).fill(null).map(_ => Array(size).fill(false)));
-  const digit = DIGIT.weight;
   const dataURIList = [];
   var nrows = 4;
   var ncols = 4;
   var image = [];
+
+  useEffect(() => {
+    async function setup() {
+      const halo2wasm = await getHalo2Wasm();
+      setHalo2wasm(halo2wasm);
+    }
+    setup();
+  }, []);
 
   const getImg = async () => {
     const p = 7; // it's a p*r x p*r 2d grid of pixels
@@ -55,6 +64,7 @@ export function MNISTSelect(props) {
 
     for (let n = 0; n < size * size; n++) {
       let idx = randomDigits[n];
+      const digit = DIGITS[`in${idx}`];
       for (var pos = 0; pos < p * p * r * r; pos++) {
         // i1,j1 = row and col for the physical grid
         let i1 = Math.floor(pos / (p * r));
@@ -62,9 +72,9 @@ export function MNISTSelect(props) {
         let i = Math.floor(i1 / p);
         let j = Math.floor(j1 / p);
         let ind = i * r + j;
-        imageData.data[4 * pos] = digit[idx][ind] * 255;
-        imageData.data[4 * pos + 1] = digit[idx][ind] * 255;
-        imageData.data[4 * pos + 2] = digit[idx][ind] * 255;
+        imageData.data[4 * pos] = digit[ind] * 255;
+        imageData.data[4 * pos + 1] = digit[ind] * 255;
+        imageData.data[4 * pos + 2] = digit[ind] * 255;
         imageData.data[4 * pos + 3] = 255;
       }
       context.putImageData(imageData, 0, 0);
@@ -80,28 +90,69 @@ export function MNISTSelect(props) {
     }
     , []);
 
-  function getSelectedImages(selected) {
-    var nselected = selected.length;
-    var imgTensor = Array(MNISTSIZE).fill(0);
+  function getSelectedImageAsInput(selected) {
+    var input = new Uint32Array(MNISTSIZE);
 
-    for (let i = 0; i < nselected; i++) {
-      var idx = randomDigits[selected[i]];
-      for (let j = 0; j < MNISTSIZE; j++) {
-        imgTensor[i * MNISTSIZE + j] = digit[idx][j];
-      }
+    var idx = randomDigits[selected];
+    const digit = DIGITS[`in${idx}`];
+    for (let j = 0; j < MNISTSIZE; j++) {
+      input[j] = digit[j] * 10 ** 6;
     }
-    return imgTensor;
+    return input;
   }
 
-  async function doProof() {
-    if (selected.length == 0) {
-      console.log("No images selected");
+  useEffect(() => {
+    if (selected == null || halo2wasm == null) {
+      console.log("No image selected");
       return;
     }
-    var nselected = selected.length;
-    var imgTensor = getSelectedImages(selected);
-    console.log("doProof");
-    console.log(imgTensor);
+
+    const circuit = new CircuitScaffold(halo2wasm);
+    circuit.newCircuitFromConfig(CIRCUIT_CONFIG);
+
+    setCircuit(circuit);
+
+    var input = getSelectedImageAsInput(selected);
+    console.log(input);
+
+    const nnwasm = getNnWasm(halo2wasm);
+    const outputs = nnwasm.forward(halo2wasm, input).split('\n').map(x => {
+      let bigX = BigInt(x);
+      if (bigX > (MODULUS - 1n) / 2n) {
+        bigX = -(MODULUS - bigX);
+      }
+      return bigX;
+    });
+
+    console.log(outputs);
+
+    const argmaxOutput = outputs.indexOf(outputs.reduce((a, b) => a > b ? a : b));
+
+    console.log(argmaxOutput);
+    setPrediction(argmaxOutput);
+  }, [selected]);
+
+  async function doProof() {
+    if (selected == null || prediction == null || circuit == null) {
+      console.log("No image selected");
+      return;
+    }
+
+    console.log("Keygen start");
+    var kstart = performance.now();
+    await circuit.keygen();
+    var kend = performance.now();
+    console.log(`Keygen time: ${kend - kstart} ms`);
+
+    console.log("Proving start");
+    var pstart = performance.now();
+    const proof = circuit.prove();
+    var pend = performance.now();
+    console.log(`Prove time: ${pend - pstart} ms`);
+
+    setProof(proof);
+    setProofDone(true);
+
     // const tensor = new Tensor('float32', Float32Array.from(imgTensor), [batchSize, 1, 28, 28]);
 
     // const {quantizedEmbedding} = await doClassify(nselected,tensor,batchSize)
@@ -118,19 +169,29 @@ export function MNISTSelect(props) {
   }
 
   async function doVerify() {
+    var vstart = performance.now();
+    try {
+      circuit.verify(proof);
+      var vend = performance.now();
+      console.log(`Verify time: ${vend - vstart} ms`);
+      setIsVerified(true);
+    } catch (e) {
+      console.error(e);
+      setIsVerified(false);
+    }
+    setVerifyDone(true);
     // const result = await verifyProof(proof, publicSignal)
     // if (result != null) {
     //   setIsVerified(result);
     //   setVerifyDone(true);
     // }
-    console.log("doVerify");
   }
 
   function GridSquare(row, col, onClick) {
     var _id = "imgSquareDigit(" + row + ", " + col + ")";
     return (
-      <div className="imgSquareDigit">
-        <input type="checkbox" id={_id} checked={gridChecked[row][col]} />
+      <div className="imgSquareDigit" key={`${row}-${col}`}>
+        <input type="checkbox" id={_id} checked={selected == row * size + col} readOnly />
         <label htmlFor={_id} >
           <img src={imgUrl[row * size + col]} alt="" onClick={() => onClick(row, col)} />
         </label>
@@ -138,41 +199,21 @@ export function MNISTSelect(props) {
     );
   }
 
-  function handleSelectDigit(r, c) {
-    var idx = r * digSize + c;
-    image = DIGIT.weight[idx];
-  }
-
   function onClick(row, col) {
     console.log("Clicking " + row + ", " + col);
     var idx = row * size + col;
-    var newSelected = selected.slice();
-    var idxOf = newSelected.indexOf(idx);
-
-    if (idxOf == -1) {
-      newSelected.push(idx)
-    } else {
-      newSelected.splice(idxOf, 1);
-    }
-    newSelected.sort(function(a, b) {
-      return a - b;
-    });
-    console.log('newSelected = ', newSelected)
-    setSelected(newSelected);
-
-    var newGridChecked = gridChecked.slice();
-    newGridChecked[row][col] = !newGridChecked[row][col];
+    setSelected(idx);
   }
 
   function renderCol(col) {
     var mycol = [];
     for (var row = 0; row < size; row++) {
       mycol.push(
-        <div>{GridSquare(row, col, onClick)}</div>
+        <div key={`${row}-${col}`}>{GridSquare(row, col, onClick)}</div>
       );
     }
     return (
-      <div>
+      <div key={`${row}-${col}`}>
         {mycol}
       </div>
     );
@@ -186,20 +227,10 @@ export function MNISTSelect(props) {
     return grid;
   }
 
-  function reset() {
-    var newGridChecked = Array(size).fill(null).map(_ => Array(size).fill(false));
-    setGridChecked(newGridChecked);
-    setPublicSignal([]);
-    setProof("");
-    setProofDone(false);
-    setVerifyDone(false);
-    setSelected([]);
-  }
-
   function ProofButton() {
     return (
       <button className="button" onClick={doProof}>
-        Classify & Prove
+        Prove
       </button>
     );
   }
@@ -212,33 +243,12 @@ export function MNISTSelect(props) {
     );
   }
 
-  function ResetButton() {
-
-    return (
-      <button className="button" onClick={reset}>
-        Reset selection
-      </button>
-    );
-  }
-  function SelectAllButton() {
-    return (
-      <button className="button"
-        onClick={() => {
-          setSelected([...Array(size * size).keys()]);
-          setGridChecked(Array(size).fill(null).map(_ => Array(size).fill(true)));
-        }}
-      >
-        Select all
-      </button>
-    );
-  }
-
   function DisplaySelection() {
     return (
       <div className="selectedPanel">
-        <h2>Selected {selected.length} images</h2>
+        <h2>Selected image index</h2>
         <div>
-          {selected.length > 0 ? "[" + selected.join(", ") + "]" : ""}
+          {selected}
         </div>
       </div>
     );
@@ -246,25 +256,23 @@ export function MNISTSelect(props) {
 
   function ProofBlock() {
     return (
-      <div className="proof">
-        <h2>Predictions</h2>
-        {"[" + prediction.join(", ") + "]"}
-        <h2>Public Signals</h2>
-        {"[" + publicSignal.join(", ") + "]"}
-        <h2>Proof of computation</h2>
-        <CopyBlock
-          text={JSON.stringify(proof, null, 2)}
-          language="json"
-          theme={dracula}
+      <>
+        <div className="proof">
+          <h2>Proof of computation</h2>
+        </div>
+        <textarea
+          rows={16}
+          value={proof}
+          onChange={(e) => setProof(e.target.value)}
         />
-      </div>
+      </>
     );
   }
 
   function VerifyBlock() {
     return (
       <div className="proof">
-        <h2>Verified by on-chain smart contract: {JSON.stringify(isVerified)}</h2>
+        <h2>Verified: {JSON.stringify(isVerified)}</h2>
       </div>
     );
   }
@@ -282,12 +290,12 @@ export function MNISTSelect(props) {
           </div>
         </div>
         <div className="buttonPanel">
-          <SelectAllButton />
           <ProofButton />
           <VerifyButton />
-          <ResetButton />
+          {/* <ResetButton /> */}
         </div>
-        <DisplaySelection />
+        {/* <DisplaySelection /> */}
+        {prediction !== null && <h2>Prediction: {prediction}</h2>}
         {proofDone && ProofBlock()}
         {verifyDone && VerifyBlock()}
       </div>
